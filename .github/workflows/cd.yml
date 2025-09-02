@@ -1,0 +1,33 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches: [ main ]   # deploy only when changes are pushed to main
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up environment
+        run: |
+          echo "No specific language setup yet."
+          echo "You can add setup steps here if needed (Node, Python, Java, etc.)"
+
+      - name: Build project (optional)
+        run: |
+          echo "Run your build commands here"
+          echo "Example: npm run build OR python setup.py build"
+
+      - name: Deploy application
+        run: |
+          echo "This is where deployment happens"
+          echo "Replace this with your actual deployment commands"
+          # Examples:
+          # scp -r ./build user@server:/var/www/app
+          # docker build -t myapp .
+          # docker push my-dockerhub-user/myapp:latest
+          # aws s3 sync ./build s3://my-bucket-name --delete
