@@ -2,32 +2,34 @@ name: CD Pipeline
 
 on:
   push:
-    branches: [ main ]   # deploy only when changes are pushed to main
-
+    branches:
+      - main           
+      - feature/*      
 jobs:
   deploy:
-    runs-on: windows-latest
-
+    runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.ref }}  
 
-      - name: Set up environment
+      # Set up Heroku CLI
+      - name: Set up Heroku CLI
+        uses: akshnz/heroku-cli-action@v1
+        with:
+          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}  
+          heroku_app_name: ${{ secrets.HEROKU_APP_NAME }}  
+      # Login to Heroku
+      - name: Login to Heroku
         run: |
-          echo "No specific language setup yet."
-          echo "You can add setup steps here if needed (Node, Python, Java, etc.)"
+          echo "machine api.heroku.com" > ~/.netrc
+          echo "  login ${HEROKU_API_KEY}" >> ~/.netrc
+          echo "  password ${HEROKU_API_KEY}" >> ~/.netrc
 
-      - name: Build project (optional)
-        run: |
-          echo "Run your build commands here"
-          echo "Example: npm run build OR python setup.py build"
-
-      - name: Deploy application
-        run: |
-          echo "This is where deployment happens"
-          echo "Replace this with your actual deployment commands"
-          # Examples:
-          # scp -r ./build user@server:/var/www/app
-          # docker build -t myapp .
-          # docker push my-dockerhub-user/myapp:latest
-          # aws s3 sync ./build s3://my-bucket-name --delete
+      # Push the code to Heroku
+      - name: Deploy to Heroku
+        run: git push https://git.heroku.com/${{ secrets.HEROKU_APP_NAME }}.git HEAD:main
+        
