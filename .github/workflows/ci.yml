@@ -2,25 +2,25 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
+      - feature/* # Will run CI on feature branches too
 
 jobs:
-  build:
-    runs-on: windows-latest
-
+  test:
+    runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up environment
-        run: |
-          echo "No specific language set up yet."
-          echo "You can add setup steps here (like Node, Python, Java, etc.)"
-
-      - name: Run build/test steps
-        run: |
-          echo "Replace this with your build commands"
-          echo "For example: npm install && npm test OR python -m unittest"
-
+      - name: Checkout Code
+        uses: actions/checkout@v2
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '14'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Run tests
+        run: npm test
