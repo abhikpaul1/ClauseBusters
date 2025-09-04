@@ -2,9 +2,13 @@ const express = require('express');
 const winston = require('winston');
 const morgan = require('morgan');
 const helmet = require('helmet');
+const cors = require("cors");
+const rateLimit = require("express-rate-limit");
+const mongoSanitize = require("express-mongo-sanitize");
+const xss = require("xss-clean");
+const hpp = require("hpp");
+
 const app = express();
-
-
 const PORT = process.env.PORT || 4000;
 
 // -------- Winston Logger Setup --------
@@ -26,6 +30,25 @@ app.use(morgan('combined', {
     write: (message) => logger.info(message.trim())
   }
 }));
+
+// -------- Security Middleware --------
+app.use(helmet());
+app.use(cors({
+  origin: "*", // change to your frontend domain in production
+
+  methods: "GET,POST,PUT,DELETE"
+}));
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP
+  message: "Too many requests, please try again later."
+});
+app.use(limiter);
+
+app.use(mongoSanitize());
+app.use(xss());
+app.use(hpp());
 
 // -------- Routes --------
 app.get('/', (req, res) => {
@@ -52,5 +75,3 @@ app.get('/health', (req, res) => {
 app.listen(PORT, () => {
   logger.info(`Server running on http://localhost:${PORT}`);
 });
-
-app.use(helmet());
