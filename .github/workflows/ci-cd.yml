@@ -38,7 +38,8 @@ jobs:
       uses: docker/build-push-action@v4
       with:
         context: .
-        push: false       # do not push to Docker Hub
+        push: false # do not push to Docker Hub
+        load: true 
         tags: myapp:latest
 
     # 7. Run the Docker container to verify it works
