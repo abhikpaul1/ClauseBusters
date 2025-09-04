@@ -1,31 +1,40 @@
 import PyPDF2
 import spacy
+import requests
+import json
+import io
 
-def extract_text_from_pdf(pdf_path: str) -> str:
+def extract_text_from_pdf(pdf_source) -> str:
     """
-    Extracts all text from a PDF file.
+    Extracts all text from a PDF file from a given source.
+    The source can be a file path (str) or a file-like object (e.g., BytesIO).
 
     Args:
-        pdf_path: The file path to the PDF document.
+        pdf_source: The path to the PDF file or a file-like object.
 
     Returns:
         A single string containing all the text from the PDF.
     """
-    print(f"--- Starting extraction from '{pdf_path}' ---")
+    print(f"--- Starting extraction ---")
     try:
-        # 'rb' mode is for reading binary files
-        with open(pdf_path, 'rb') as file:
-            reader = PyPDF2.PdfReader(file)
+        if isinstance(pdf_source, str):
+            # If the source is a string, open the file
+            with open(pdf_source, 'rb') as file:
+                reader = PyPDF2.PdfReader(file)
+                text = ""
+                for page in reader.pages:
+                    text += page.extract_text() or ""
+                return text
+        else:
+            # If the source is a BytesIO object, read from it directly
+            reader = PyPDF2.PdfReader(pdf_source)
             text = ""
-            # Iterate through each page and extract text
             for page in reader.pages:
-                extracted_text = page.extract_text()
-                # Use a safeguard in case a page has no extractable text
-                if extracted_text:
-                    text += extracted_text + "\n"
+                text += page.extract_text() or ""
             return text
+            
     except FileNotFoundError:
-        print(f"Error: The file at '{pdf_path}' was not found. Please check the file path.")
+        print(f"Error: The file at '{pdf_source}' was not found.")
         return ""
     except Exception as e:
         print(f"An unexpected error occurred during PDF extraction: {e}")
@@ -88,6 +97,41 @@ def extract_entities_and_keywords(doc) -> tuple:
     
     return entities, list(set(keywords))
 
+def summarize_text_with_gemini(text: str) -> str:
+    """
+    Calls the Gemini API to generate a summary of the provided text.
+    """
+    api_key = "" # Replace with your actual Gemini API key
+    if not api_key:
+        print("API key is not set. Skipping summarization.")
+        return "API key not configured."
+
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={api_key}"
+    
+    # Construct the payload for the API request
+    payload = {
+        "contents": [{"parts": [{"text": f"Summarize the following legal document content in a single paragraph, focusing on key clauses and agreements:\n\n{text}"}]}]
+    }
+
+    headers = {'Content-Type': 'application/json'}
+    
+    try:
+        response = requests.post(api_url, headers=headers, data=json.dumps(payload))
+        response.raise_for_status() # Raise an error for bad status codes
+        
+        result = response.json()
+        
+        # Extract the generated text from the response
+        generated_text = result['candidates'][0]['content']['parts'][0]['text']
+        return generated_text
+        
+    except requests.exceptions.RequestException as e:
+        print(f"API call failed: {e}")
+        return "Summarization service is unavailable."
+    except (KeyError, IndexError) as e:
+        print(f"Error parsing API response: {e}")
+        return "Failed to parse API response."
+
 def main_pipeline(pdf_path: str):
     """
     Main function to orchestrate the document processing pipeline.
@@ -99,13 +143,16 @@ def main_pipeline(pdf_path: str):
 
     # Step 2: Analyze text with spaCy
     doc = analyze_text_with_spacy(extracted_text)
-    if not doc:
-        return
-
-    # Step 3: Extract and print key information
-    entities, keywords = extract_entities_and_keywords(doc)
     
+    # Step 3: Extract key information (entities and keywords)
+    entities, keywords = extract_entities_and_keywords(doc)
+
+    # Step 4: Summarize with Gemini API
+    summary = summarize_text_with_gemini(extracted_text)
+    
+    # Display all results
     print("\n--- Document Analysis Complete! ---")
+    print(f"\nDocument Summary:\n{summary}")
     print("\nExtracted Named Entities:")
     for label, entity_list in entities.items():
         print(f"  {label}:")
