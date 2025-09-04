@@ -11,26 +11,43 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    # 1. Checkout the repository
     - name: Checkout repository
       uses: actions/checkout@v3
 
+    # 2. Set up Node.js
     - name: Set up Node.js
       uses: actions/setup-node@v3
       with:
         node-version: 18
 
+    # 3. Install dependencies
     - name: Install dependencies
       run: npm install
 
+    # 4. Run tests (optional)
     - name: Run tests
       run: echo "No tests configured"
 
+    # 5. Set up Docker Buildx
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
 
-    
-
-    - name: Build and push Docker image
+    # 6. Build Docker image locally
+    - name: Build Docker image
       uses: docker/build-push-action@v4
       with:
         context: .
-        push: true
-        tags: ${{ secrets.DOCKER_USERNAME }}/myapp:latest
+        push: false       # do not push to Docker Hub
+        tags: myapp:latest
+
+    # 7. Run the Docker container to verify it works
+    - name: Run Docker container
+      run: |
+        docker run --rm -d --name myapp_test -p 4000:4000 myapp:latest
+        sleep 5  # give container time to start
+        docker ps -a
+        docker logs myapp_test
+        docker stop myapp_test
+
+        
