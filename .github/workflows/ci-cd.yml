@@ -2,7 +2,7 @@ name: CI/CD - Docker to GHCR
 
 on:
   push:
-    branches: [ "*" ]  
+    branches: [ "*" ]  # Trigger on pushes to main branch
 
 jobs:
   build-and-push:
@@ -26,10 +26,16 @@ jobs:
 
       - name: 🏗️ Build Docker image
         run: |
-          IMAGE_NAME=ghcr.io/${{ github.repository }}:latest
+          REPO_NAME="${{ github.repository }}"                     # e.g. AbhikPaul1/ClauseBusters
+          REPO_LOWER=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]')  # convert to lowercase
+          IMAGE_NAME="ghcr.io/$REPO_LOWER:latest"
+          echo "Building image $IMAGE_NAME"
           docker build -t $IMAGE_NAME .
 
       - name: 🚀 Push Docker image to GHCR
         run: |
-          IMAGE_NAME=ghcr.io/${{ github.repository }}:latest
+          REPO_NAME="${{ github.repository }}"
+          REPO_LOWER=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]')
+          IMAGE_NAME="ghcr.io/$REPO_LOWER:latest"
+          echo "Pushing image $IMAGE_NAME"
           docker push $IMAGE_NAME
