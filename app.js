@@ -15,11 +15,16 @@ const PORT = process.env.PORT || 4000;
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
-    winston.format.timestamp(),
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.json()
   ),
   transports: [
-    new winston.transports.Console(),
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
+    }),
     new winston.transports.File({ filename: 'app.log' })
   ],
 });
@@ -35,8 +40,7 @@ app.use(morgan('combined', {
 app.use(helmet());
 app.use(cors({
   origin: "*", // change to your frontend domain in production
-
-  methods: "GET,POST,PUT,DELETE"
+  methods: ["GET", "POST", "PUT", "DELETE"] // Enclosed methods in an array
 }));
 
 const limiter = rateLimit({
@@ -71,7 +75,15 @@ app.get('/health', (req, res) => {
   });
 });
 
+// -------- Error Handling Middleware --------
+app.use((err, req, res, next) => {
+  logger.error(err.stack);
+  res.status(500).send('Something broke!');
+});
+
 // -------- Start Server --------
 app.listen(PORT, () => {
   logger.info(`Server running on http://localhost:${PORT}`);
 });
+
+module.exports = app;

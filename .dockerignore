@@ -1,0 +1,30 @@
+# Node modules should never be copied (you install inside Docker)
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Ignore dotenv files (they often contain secrets)
+.env
+.env.*
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Editor/project settings
+.vscode
+.idea
+
+# Git stuff
+.git
+.gitignore
+
+# Docker-specific
+docker-compose.yml
+.dockerignore
+
+# Build artifacts (optional - if you transpile or bundle)
+dist
+build
+coverage
