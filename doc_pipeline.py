@@ -101,19 +101,26 @@ def summarize_text_with_gemini(text: str) -> str:
     """
     Calls the Gemini API to generate a summary of the provided text.
     """
-    api_key = "AIzaSyCu1WqC4PE1uO2VhQ5ODK22JpAUDPgNuhg" 
+    api_key = "AIzaSyCu1WqC4PE1uO2VhQ5ODK22JpAUDPgNuhg"
     if not api_key:
         print("API key is not set. Skipping summarization.")
         return "API key not configured."
 
+    # Define a custom safety prompt for simplification
+    safety_prompt = (
+        "You are a helpful legal document assistant. Your task is to summarize the provided "
+        "document. Explain the key clauses and agreements in a simple, jargon-free paragraph. "
+        "Do not provide any legal advice, legal opinion, or take a legal position. "
+        "Do not offer guidance on how to interpret or act on the document. "
+    )
+
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={api_key}"
     
     payload = {
-        "contents": [{"parts": [{"text": f"Summarize the following legal document content in a single paragraph, focusing on key clauses and agreements:\n\n{text}"}]}]
+        "contents": [{"parts": [{"text": safety_prompt + "Summarize the following legal document content:\n\n" + text}]}]
     }
     headers = {'Content-Type': 'application/json'}
     
-    # Set a timeout for the API call to prevent the app from hanging
     timeout_seconds = 30
     
     try:
@@ -123,6 +130,15 @@ def summarize_text_with_gemini(text: str) -> str:
         result = response.json()
         
         generated_text = result['candidates'][0]['content']['parts'][0]['text']
+        
+        # A more robust safety filter check
+        harmful_phrases = [
+            "legal advice", "legal opinion", "I advise you", "I suggest you", "recommend you",
+            "take this position", "your rights are", "it is my opinion that", "consult with a lawyer"
+        ]
+        if any(phrase in generated_text.lower() for phrase in harmful_phrases):
+            return "The AI's response was flagged for containing potentially harmful content. No summary will be provided."
+
         return generated_text
         
     except Timeout:
@@ -167,3 +183,4 @@ if __name__ == "__main__":
         sys.exit(1)
     
     main_pipeline(pdf_path)
+
