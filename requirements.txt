@@ -1,0 +1,5 @@
+pypdf
+spacy
+requests
+langchain-google-genai
+chromadb
