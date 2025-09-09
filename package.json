@@ -13,8 +13,8 @@
     "test:integration": "jest __tests__/simplify.integration.test.js",
     "test:e2e": "npx cypress run --browser chrome",
     "test:e2e:open": "cypress open",
-    "test:api": "newman run tests/postman/postman-collection.json",
-    "test:api:ci": "newman run tests/postman/postman-collection.json --reporters cli,junit --reporter-junit-export tests/results/api-test-results.xml"
+    "test:api": "newman run tests/postman/clausebusters-collection.json",
+    "test:api:ci": "newman run tests/postman/clausebusters-collection.json --reporters cli,junit --reporter-junit-export tests/results/api-test-results.xml"
   },
   "author": "Your Name",
   "license": "Apache-2.0",
