@@ -1,0 +1,142 @@
+{
+	"info": {
+		"_postman_id": "dfcf6bf8-dc05-46de-81b8-995024c5737c",
+		"name": "ClauseBusters API",
+		"description": "StartFragmentAPI tests for legal document simplificationEndFragment",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "48265241",
+		"_collection_link": "https://gharaswati9-4608589.postman.co/workspace/swati's-Workspace~8ea095b4-dce5-443d-8e89-0e831ed4cfe4/collection/48265241-dfcf6bf8-dc05-46de-81b8-995024c5737c?action=share&source=collection_link&creator=48265241"
+	},
+	"item": [
+		{
+			"name": "Health Test",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// Test 1: Check status code\r",
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"// Test 2: Check response body\r",
+							"pm.test(\"Response has status field\", function () {\r",
+							"    pm.response.to.have.jsonBody('status', 'ok');\r",
+							"});\r",
+							"\r",
+							"// Test 3: Check response time\r",
+							"pm.test(\"Response time is less than 200ms\", function () {\r",
+							"    pm.expect(pm.response.responseTime).to.be.below(200);\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:4000/health",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						"health"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "POST /simplify",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// Test 1: Check if response is successful\r",
+							"pm.test(\"Status code is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"// Test 2: Check response time is reasonable\r",
+							"pm.test(\"Response time is less than 5 seconds\", function () {\r",
+							"    pm.expect(pm.response.responseTime).to.be.below(5000);\r",
+							"});\r",
+							"\r",
+							"// Test 3: Check response has JSON body\r",
+							"pm.test(\"Response has JSON body\", function () {\r",
+							"    pm.response.to.have.jsonBody();\r",
+							"});\r",
+							"\r",
+							"// Test 4: Check response contains simplified text\r",
+							"pm.test(\"Response contains simplified field\", function () {\r",
+							"    pm.expect(pm.response.json()).to.have.property('simplified');\r",
+							"});\r",
+							"\r",
+							"// Test 5: Check simplified text is a string\r",
+							"pm.test(\"Simplified text is a string\", function () {\r",
+							"    pm.expect(pm.response.json().simplified).to.be.a('string');\r",
+							"});\r",
+							"\r",
+							"// Test 6: Check simplified text is not empty\r",
+							"pm.test(\"Simplified text is not empty\", function () {\r",
+							"    pm.expect(pm.response.json().simplified.length).to.be.greaterThan(0);\r",
+							"});\r",
+							"\r",
+							"// Save the simplified text as variable for other requests (optional)\r",
+							"pm.test(\"Save simplified text as variable\", function () {\r",
+							"    const response = pm.response.json();\r",
+							"    pm.collectionVariables.set('simplified_text', response.simplified);\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"content\": \"The party of the first part, hereinafter referred to as the 'Lessor', does hereby lease, demise, and let unto the party of the second part, hereinafter referred to as the 'Lessee', the premises described as follows, to wit: [Property Description], for the term beginning on [Start Date] and ending on [End Date], subject to the terms, covenants, and conditions hereinafter set forth.\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:4000/simplify",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						"simplify"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "simplified_text",
+			"value": ""
+		}
+	]
+}

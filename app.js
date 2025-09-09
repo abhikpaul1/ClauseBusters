@@ -45,21 +45,27 @@ app.use(express.json());
 
 // -------- Redis Setup --------
 const redisClient = redis.createClient();
-redisClient.connect().catch(err => logger.error('Redis connection error:', err));
+// Handle connection errors
+redisClient.on('error', (err) => logger.error('Redis client error:', err));
+
+// Only connect to Redis if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+  redisClient.connect().catch(err => logger.error('Redis connection error:', err));
+}
 
 // -------- MongoDB + Mongoose Setup --------
 const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/mydb', {
-      useNewUrlParser: true, useUnifiedTopology: true
+      // Remove deprecated options for cleaner code
+       useNewUrlParser: true, useUnifiedTopology: true 
     });
-    console.log(`MongoDB connected: ${mongoose.connection.host}`); // :contentReference[oaicite:0]{index=0}
+    logger.info(`MongoDB connected: ${mongoose.connection.host}`);
   } catch (err) {
-    console.error('MongoDB connection failed:', err);
+    logger.error('MongoDB connection failed:', err);
     process.exit(1);
   }
 };
-connectDB();
 
 // Example Mongoose Model
 const DocumentSchema = new mongoose.Schema({
@@ -134,9 +140,21 @@ app.use((err, req, res, next) => {
   res.status(500).send('Something broke!');
 });
 
-// Start Server
-app.listen(PORT, () => {
-  logger.info(`Server running on http://localhost:${PORT}`);
-});
+// -------- Conditional Startup --------
+if (require.main === module) {
+  // This block only runs if this file is executed directly (node app.js)
+  
+  if (process.env.NODE_ENV !== 'test') {
+    // Connect to databases only if not in test environment
+    redisClient.connect().catch(err => logger.error('Redis connection error:', err));
+    connectDB();
+  }
+  
+  // Always start the server (even in test environment)
+  app.listen(PORT, () => {
+    logger.info(`Server running on http://localhost:${PORT}`);
+  });
+}
 
+// You must export your Express app for Supertest to work!
 module.exports = app;

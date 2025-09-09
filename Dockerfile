@@ -1,20 +1,21 @@
-# Use Node.js 18
-FROM node:18
-
-# Set working directory
+# Single stage for runtime
+FROM node:20-alpine
 WORKDIR /app
 
-# Copy package.json and package-lock.json
+# Create a non-root user for security
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S clausebuster -u 1001
+
+# 1. COPY DEPENDENCY FILES FIRST - This allows caching of npm install
 COPY package*.json ./
+# 2. INSTALL DEPS - This step is cached if package*.json doesn't change
+RUN npm ci --only=production
 
-# Install dependencies
-RUN npm install
+# 3. COPY EVERYTHING ELSE - This happens after the cached npm install
+COPY --chown=clausebuster:nodejs . .
 
-# Copy rest of the app
-COPY . .
+# Switch to the non-root user
+USER clausebuster
 
-# Expose port
 EXPOSE 4000
-
-# Start the app
 CMD ["node", "app.js"]
