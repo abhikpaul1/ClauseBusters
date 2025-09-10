@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clausebusters-app-deployment
+  labels:
+    app: clausebusters-app
+spec:
+  replicas: 3 # Run three instances of your app
+  selector:
+    matchLabels:
+      app: clausebusters-app
+  template:
+    metadata:
+      labels:
+        app: clausebusters-app
+    spec:
+      containers:
+        - name: clausebusters-app-container
+          image: localhost:5000/clausebusters-app:latest # Use the local image tag
+          ports:
+            - containerPort: 4000
+          env:
+            - name: REDIS_URL
+              value: redis://redis-service:6379
+            - name: MONGODB_URI
+              value: mongodb://mongodb-service:27017/mydb

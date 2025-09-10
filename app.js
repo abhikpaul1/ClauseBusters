@@ -44,7 +44,8 @@ app.use(hpp());
 app.use(express.json());
 
 // -------- Redis Setup --------
-const redisClient = redis.createClient();
+const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const redisClient = redis.createClient({ url: REDIS_URL });
 // Handle connection errors
 redisClient.on('error', (err) => logger.error('Redis client error:', err));
 
@@ -146,7 +147,7 @@ if (require.main === module) {
   
   if (process.env.NODE_ENV !== 'test') {
     // Connect to databases only if not in test environment
-    redisClient.connect().catch(err => logger.error('Redis connection error:', err));
+    //redisClient.connect().catch(err => logger.error('Redis connection error:', err));
     connectDB();
   }
   
