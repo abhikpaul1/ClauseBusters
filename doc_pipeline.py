@@ -1,190 +1,245 @@
 import os
-import sys
-from pypdf import PdfReader
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
-from langchain.chains import ConversationalRetrievalChain
-import requests
+import time
 import json
-import io
-from requests.exceptions import Timeout, RequestException
+import hashlib
+from typing import Dict, Optional
+import PyPDF2
+import google.generativeai as genai
+from collections import deque
 
-# Pre-load the spaCy model once for efficiency
-try:
-    import spacy
-    NLP_MODEL = spacy.load("en_core_web_sm")
-except ImportError:
-    print("SpaCy library not found. Please install it.")
-    sys.exit(1)
-except OSError:
-    print("SpaCy model not found. Please run 'python -m spacy download en_core_web_sm' to install it.")
-    sys.exit(1)
-
-def get_document_text(pdf_path: str) -> str:
-    """
-    Extracts all text from a PDF file from a given path.
-    """
-    try:
-        with open(pdf_path, 'rb') as file:
-            reader = PdfReader(file)
-            text = ""
-            for page in reader.pages:
-                text += page.extract_text() or ""
-            return text
-    except FileNotFoundError:
-        print(f"Error: The file at '{pdf_path}' was not found.")
-        return ""
-    except Exception as e:
-        print(f"An unexpected error occurred during PDF extraction: {e}")
-        return ""
-
-def get_text_chunks(text: str):
-    """
-    Splits a document's text into manageable chunks.
-    """
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    chunks = text_splitter.split_text(text)
-    return chunks
-
-def get_vector_store(text_chunks, api_key: str):
-    """
-    Creates a vector store from document chunks.
-    """
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
-    vector_store = Chroma.from_texts(text_chunks, embedding=embeddings)
-    return vector_store
-
-def get_conversational_chain(vector_store, api_key: str):
-    """
-    Sets up the conversational RAG chain with safety prompts.
-    """
-    safety_prompt = (
-        "You are a helpful legal document assistant. Your task is to answer the user's "
-        "question based *only* on the provided document content. Explain the relevant "
-        "clauses in a simple, jargon-free manner. Do not provide any legal advice, "
-        "legal opinion, or take a legal position. "
-        "If the answer is not in the document, say 'I cannot answer that question based "
-        "on the provided document.'"
-    )
-
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        google_api_key=api_key,
-        temperature=0.7
-    )
+class RateLimiter:
+    def __init__(self, max_calls_per_minute=15):
+        self.calls = deque()
+        self.max_calls = max_calls_per_minute
     
-    retriever = vector_store.as_retriever()
+    def can_call(self):
+        now = time.time()
+        # Remove calls older than 1 minute
+        while self.calls and self.calls[0] < now - 60:
+            self.calls.popleft()
+        return len(self.calls) < self.max_calls
     
-    chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=retriever,
-        return_source_documents=True
-    )
-    return chain
+    def record_call(self):
+        self.calls.append(time.time())
+    
+    def wait_if_needed(self):
+        if not self.can_call():
+            wait_time = 60 - (time.time() - self.calls[0])
+            print(f"⏳ Rate limit reached. Waiting {wait_time:.1f} seconds...")
+            time.sleep(wait_time)
 
-def summarize_text_with_gemini(text: str, api_key: str) -> str:
-    """
-    Calls the Gemini API to generate a summary of the provided text.
-    """
-    if not api_key:
-        print("API key is not set. Skipping summarization.")
-        return "API key not configured."
-
-    safety_prompt = (
-        "You are a helpful legal document assistant. Your task is to summarize the provided "
-        "document. Explain the key clauses and agreements in a simple, jargon-free paragraph. "
-        "Do not provide any legal advice, legal opinion, or take a legal position. "
-        "Do not offer guidance on how to interpret or act on the document. "
-    )
-
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.0-pro:generateContent?key={api_key}"
-    
-    payload = {
-        "contents": [{"parts": [{"text": safety_prompt + "Summarize the following legal document content:\n\n" + text}]}]
-    }
-    headers = {'Content-Type': 'application/json'}
-    
-    timeout_seconds = 30
-    
-    try:
-        response = requests.post(api_url, headers=headers, data=json.dumps(payload), timeout=timeout_seconds)
-        response.raise_for_status() 
+class DocumentProcessor:
+    def __init__(self, api_key: str):
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        self.rate_limiter = RateLimiter()
         
-        result = response.json()
-        
-        generated_text = result['candidates'][0]['content']['parts'][0]['text']
-        
-        harmful_phrases = [
-            "legal advice", "legal opinion", "I advise you", "I suggest you", "recommend you",
-            "take this position", "your rights are", "it is my opinion that", "consult with a lawyer"
+        # Legal keywords to detect legal queries
+        self.legal_keywords = [
+            'legal advice', 'sue', 'lawsuit', 'court', 'attorney', 'lawyer',
+            'legal rights', 'liability', 'legal action', 'legal opinion'
         ]
-        if any(phrase in generated_text.lower() for phrase in harmful_phrases):
-            return "The AI's response was flagged for containing potentially harmful content. No summary will be provided."
-
-        return generated_text
         
-    except Timeout:
-        print("API call timed out.")
-        return "Summarization service timed out."
-    except requests.exceptions.RequestException as e:
-        print(f"API call failed due to a network error: {e}")
-        return "Summarization service is unavailable due to a network error."
-    except (KeyError, IndexError) as e:
-        print(f"Error parsing API response: The response structure was unexpected. {e}")
-        return "Failed to parse API response."
-
-def main_pipeline(pdf_path: str, api_key: str):
-    """
-    Main function to orchestrate the document processing pipeline.
-    """
-    extracted_text = get_document_text(pdf_path)
-    if not extracted_text:
-        return
-
-    # Process for Q&A
-    text_chunks = get_text_chunks(extracted_text)
-    vector_store = get_vector_store(text_chunks, api_key)
-    conversational_chain = get_conversational_chain(vector_store, api_key)
-    
-    print("\n--- Conversational AI is ready! ---")
-    print("You can now ask questions about the document. Type 'exit' to quit.")
-    
-    chat_history = []
-    while True:
-        user_question = input("\nYour question: ")
-        if user_question.lower() == 'exit':
-            print("Exiting Q&A session. Goodbye!")
-            break
+        # Cache for processed documents
+        self.doc_cache = {}
         
-        if not user_question.strip():
-            continue
+    def extract_pdf_text(self, pdf_path: str) -> str:
+        """Extract text from PDF"""
+        try:
+            with open(pdf_path, 'rb') as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                text = ""
+                for page in pdf_reader.pages:
+                    text += page.extract_text() + "\n"
+                return text.strip()
+        except Exception as e:
+            raise Exception(f"Error reading PDF: {e}")
+    
+    def get_doc_hash(self, text: str) -> str:
+        """Generate hash for caching"""
+        return hashlib.md5(text.encode()).hexdigest()[:12]
+    
+    def is_legal_query(self, query: str) -> bool:
+        """Check if query is asking for legal advice"""
+        query_lower = query.lower()
+        return any(keyword in query_lower for keyword in self.legal_keywords)
+    
+    def process_document(self, pdf_path: str) -> Dict:
+        """Process PDF with single API call"""
+        print("📄 Extracting text from PDF...")
+        text = self.extract_pdf_text(pdf_path)
+        
+        # Check cache
+        doc_hash = self.get_doc_hash(text)
+        if doc_hash in self.doc_cache:
+            print("✅ Using cached results")
+            return self.doc_cache[doc_hash]
+        
+        print("🤖 Processing with AI...")
+        self.rate_limiter.wait_if_needed()
+        
+        prompt = f"""
+        Analyze this document and provide:
+        1. A brief summary (2-3 sentences)
+        2. Key concepts with simple explanations
+        3. Simplified version of complex content
+        
+        IMPORTANT: Do not provide legal advice. For legal documents, only explain structure and general concepts.
+        
+        Text: {text[:8000]}...
+        
+        Respond in JSON format:
+        {{
+            "summary": "brief summary here",
+            "key_concepts": {{"term1": "simple explanation", "term2": "simple explanation"}},
+            "simplified_content": "rewritten content in simple language",
+            "is_legal_document": true/false
+        }}
+        """
         
         try:
-            response = conversational_chain.invoke({"question": user_question, "chat_history": chat_history})
-            print("AI Answer:", response['answer'])
-            chat_history.append((user_question, response['answer']))
+            response = self.model.generate_content(prompt)
+            self.rate_limiter.record_call()
+            
+            # Parse JSON response
+            content = response.text.strip()
+            if content.startswith('```json'):
+                content = content[7:-3]
+            elif content.startswith('```'):
+                content = content[3:-3]
+            
+            result = json.loads(content)
+            result['doc_hash'] = doc_hash
+            
+            # Cache result
+            self.doc_cache[doc_hash] = result
+            
+            return result
+            
         except Exception as e:
-            print(f"An error occurred during the AI's response: {e}")
-            print("Please try again or check your network connection.")
+            print(f"❌ AI processing error: {e}")
+            return {
+                "summary": "Error processing document",
+                "key_concepts": {},
+                "simplified_content": text[:1000] + "...",
+                "is_legal_document": False,
+                "doc_hash": doc_hash
+            }
+    
+    def answer_query(self, processed_doc: Dict, query: str) -> str:
+        """Answer query with minimal API usage"""
+        
+        # Block legal advice queries
+        if self.is_legal_query(query):
+            return "⚠️ I cannot provide legal advice. Please consult a qualified attorney for legal matters."
+        
+        # Add legal disclaimer for legal documents
+        disclaimer = ""
+        if processed_doc.get('is_legal_document'):
+            disclaimer = "⚠️ Legal Disclaimer: This is for informational purposes only, not legal advice.\n\n"
+        
+        # Try to answer from cached data first
+        query_lower = query.lower()
+        
+        # Check for summary requests
+        if any(word in query_lower for word in ['summary', 'about', 'main', 'purpose']):
+            return disclaimer + f"📝 Summary: {processed_doc['summary']}"
+        
+        # Check for key concepts
+        if 'concept' in query_lower or 'term' in query_lower or 'definition' in query_lower:
+            concepts = processed_doc['key_concepts']
+            if concepts:
+                result = "🔍 Key Concepts:\n"
+                for term, explanation in concepts.items():
+                    result += f"• {term}: {explanation}\n"
+                return disclaimer + result
+            
+        # Check for simplified content request
+        if any(word in query_lower for word in ['simple', 'explain', 'understand', 'clarify']):
+            return disclaimer + f"💡 Simplified: {processed_doc['simplified_content'][:500]}..."
+        
+        # For specific/complex queries, use AI
+        return self._ai_query(processed_doc, query, disclaimer)
+    
+    def _ai_query(self, processed_doc: Dict, query: str, disclaimer: str) -> str:
+        """Use AI for complex queries"""
+        self.rate_limiter.wait_if_needed()
+        
+        prompt = f"""
+        Based on this document information, answer the user's question.
+        Do NOT provide legal advice.
+        
+        Document Summary: {processed_doc['summary']}
+        Key Concepts: {processed_doc['key_concepts']}
+        
+        User Question: {query}
+        
+        Provide a helpful, factual answer based only on the document information.
+        """
+        
+        try:
+            response = self.model.generate_content(prompt)
+            self.rate_limiter.record_call()
+            return disclaimer + f"💬 {response.text.strip()}"
+        except Exception as e:
+            return disclaimer + f"❌ Sorry, I couldn't process that query. Here's the summary: {processed_doc['summary']}"
 
+def main():
+    print("🚀 AI Document Processor")
+    print("=" * 40)
+    
+    
+    api_key = "AIzaSyCu1WqC4PE1uO2VhQ5ODK22JpAUDPgNuhg"  # Replace with your actual API key
+    
+    if api_key != "AIzaSyCu1WqC4PE1uO2VhQ5ODK22JpAUDPgNuhg":
+        print("❌ Please set your Gemini API key in the code")
+        return
+    
+    processor = DocumentProcessor(api_key)
+    
+    # Get PDF path from user
+    pdf_path = input("📁 Enter PDF file path: ").strip().strip('"')
+    
+    if not os.path.exists(pdf_path):
+        print("❌ File not found!")
+        return
+    
+    try:
+        # Process document
+        result = processor.process_document(pdf_path)
+        
+        print("\n" + "=" * 50)
+        print("✅ DOCUMENT PROCESSED")
+        print("=" * 50)
+        
+        if result.get('is_legal_document'):
+            print("⚠️  Legal document detected - no legal advice will be provided")
+        
+        print(f"\n📄 SUMMARY:")
+        print(result['summary'])
+        
+        if result['key_concepts']:
+            print(f"\n🔍 KEY CONCEPTS:")
+            for term, explanation in result['key_concepts'].items():
+                print(f"• {term}: {explanation}")
+        
+        # Q&A Loop
+        print(f"\n❓ ASK QUESTIONS (type 'quit' to exit)")
+        print("-" * 30)
+        
+        while True:
+            question = input("\nYour question: ").strip()
+            if question.lower() in ['quit', 'exit', 'q']:
+                break
+                
+            if question:
+                answer = processor.answer_query(result, question)
+                print(f"\n{answer}")
+        
+        print("\n👋 Goodbye!")
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
 
 if __name__ == "__main__":
-    try:
-        google_api_key = "AIzaSyCu1WqC4PE1uO2VhQ5ODK22JpAUDPgNuhg"
-        if not google_api_key:
-            print("Error: API key is not configured. Please add your key to the script.")
-            sys.exit(1)
-
-        pdf_path = input("Please enter the path to your PDF file: ")
-        if not pdf_path:
-            print("No file path provided. Exiting.")
-            sys.exit(1)
-        
-        main_pipeline(pdf_path, google_api_key)
-
-    except ImportError:
-        print("Required libraries not found. Please run the following command:")
-        print("pip install langchain-google-genai pypdf chromadb")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+    main()
