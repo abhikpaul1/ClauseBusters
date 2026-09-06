@@ -1,4 +1,4 @@
-# Recommended (Free) Tech Stack & Free Tools
+# Tech Stack decided for this project
 Design: Figma + Canva + Unsplash + Google Fonts (wireframing & UI design).
 
 Development: VS Code (code editor), GitHub (version control).
